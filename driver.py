@@ -6,6 +6,7 @@ import netCDF4
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from scipy import ndimage, stats
+from mpl_toolkits.basemap import Basemap
 
 Cp = 1004.5; Rd = 287.04; Rd_Cp = Rd/Cp; p0 = 1.e5; grav = 9.81
 
@@ -68,11 +69,16 @@ def plot_field_recentered(var, norm, title=' ', showFig=False):
     plt.show()
   else:
     return plt
+
+def makeMapCoords(lat,lon):
+  #return x,y coordinates on a map from lat/lon in degrees
+  m = Basemap(projection='ortho',lon_0=260.,lat_0=35.5, resolution='l')
+  return m(lon,lat)
   
 def demo():
   #read in data --------------------
-  fDir = '/data01/densityCurrents/'
-  f = fDir+'201407101500.nc'
+  fDir = '/data01/densityCurrents/cases/'
+  f = fDir+'2014071015.nc'
   dxGrid = 1.e3
   
   data = netCDF4.Dataset(f,'r')
@@ -90,15 +96,18 @@ def demo():
   buoy = grav*(thetav-thetav_ref)/thetav_ref
   #gradb_dir = np.gradient(buoy);
   #gradb = np.maximum(gradb_dir[0],gradb_dir[1])
-  gradb = ndimage.morphological_gradient(buoy, size=(5,5))
+  #gradb = ndimage.morphological_gradient(buoy, size=(5,5))
   
   pPerturb = slp-slp_ref
-  gradP = ndimage.morphological_gradient(pPerturb, size=(5,5))
+  #gradP = ndimage.morphological_gradient(pPerturb, size=(5,5))
   
   du_dxy = np.gradient(u/dxGrid)
   dv_dxy = np.gradient(v/dxGrid)
   div = du_dxy[1]+dv_dxy[0]
-  gradDiv = ndimage.morphological_gradient(div, size=(5,5))
+  #gradDiv = ndimage.morphological_gradient(div, size=(5,5))
+  maxDiv = ndimage.filters.maximum_filter(div, size=(7,7))
+  minDiv = ndimage.filters.minimum_filter(div, size=(7,7))
+  divDiff = maxDiv-minDiv
   
   #plot some stuff --------------
   if (False):
@@ -135,11 +144,21 @@ def demo():
     plot_field_recentered(signalFront, norm, title='gradb*gradp',showFig=False)
     
     candidates = (signalFlow>0)*(signalFront>signalThresh)
+  if (False):
+    candidates = (signalFlow>signalThresh)*(divDiff>1.e-3)
   else:
     candidates = signalFlow>signalThresh
   
   candidates = ndimage.morphology.binary_closing(candidates, structure=np.ones((5,5),dtype=int), iterations=1)
   objs, nObjs = ndimage.measurements.label(candidates)
+  
+  if (True):
+    norm1 = MidpointNormalize(midpoint=0)
+    plot_field_recentered(divDiff, norm1,title='ddiv', showFig=False)
+    
+    divInObject = divDiff.copy(); divInObject[objs==0] = 0.
+    norm = MidpointNormalize(midpoint=0)
+    plot_field_recentered(divInObject, norm,title='divObject', showFig=False)
   
   #i think background is always 0?
   plt.figure()
